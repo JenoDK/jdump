@@ -28,9 +28,7 @@ function restoreDump {
   echo -e ${LIGHT_BLUE}First dropping db
   dropDatabase
   echo -e ${LIGHT_BLUE}Starting restore of "$sqlDump"
-  echo -e ${CYAN}---mysql---
-  mysql -u genohm -pgenohm qiagen < "$sqlDump"
-  echo -e ---mysql---${NC}
+  mysql -u $databaseUser -p$databasePassword $database < "$sqlDump"
   echo -e ${LIGHT_BLUE}Finished restore of "$sqlDump"
 }
 
