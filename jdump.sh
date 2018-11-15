@@ -36,7 +36,7 @@ function listDumps {
   contains=$1
   echo -e ${CYAN}
   # Find dumps files matching '*'$contains'*.sql' and add escapes to spaces for the purpose of copy pasting
-  find "$dumpFolder" -type f -name '*'$contains'*.sql' | sed -e 's/ /\\ /g'
+  find "$dumpFolder" -type f -name '*'$contains'*.sql' -print0 | xargs -0 ls -ltr | sed -e 's/ /\\ /g'
   echo -e ${NC}
 }
 
