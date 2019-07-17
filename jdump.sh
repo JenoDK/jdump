@@ -45,7 +45,7 @@ function createDump {
   sqlDump=$1'_'$date.sql
   echo -e ${LIGHT_BLUE}"Creating dump " $sqlDump " in folder $dumpFolder"
   echo -e ${CYAN}---mysql---
-  mysqldump -u $databaseUser -p$databasePassword $database > "$dumpFolder$sqlDump"
+  mysqldump -u $databaseUser -p$databasePassword $database > "$dumpFolder/$sqlDump"
   echo -e ---mysql---${NC}
 }
 
