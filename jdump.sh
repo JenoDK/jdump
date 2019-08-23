@@ -1,8 +1,20 @@
 #!/bin/sh
-my_dir=`dirname $0`
-. $my_dir/config.cfg
 
-configFile=$my_dir/config.cfg
+# include parse_yaml function
+my_dir="$(dirname "$0")"
+. "$my_dir/parse_yaml.sh"
+
+# read yaml file
+eval $(parse_yaml $my_dir/config.yml "config_")
+
+databaseVariableName="config_${config_configToUse}_database"
+dumpFolderVariableName="config_${config_configToUse}_dumpFolder"
+databaseUserVariableName="config_${config_configToUse}_databaseUser"
+databasePasswordVariableName="config_${config_configToUse}_databasePassword"
+database=${!databaseVariableName}
+dumpFolder=${!dumpFolderVariableName}
+databaseUser=${!databaseUserVariableName}
+databasePassword=${!databasePasswordVariableName}
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -12,13 +24,13 @@ NC='\033[0m'
 
 function usage {
   echo -e "${LIGHT_BLUE}Usage: ./jdump.sh or alias [ -h | --help ] [ --config ] [ -sc | --show-config ] [ -cd | --create-dump ] [ -ld | --list-dumps ] [ -rd | --restore-dump ] [ -dd | --drop-db ]"
-  echo -e "${GREEN} -h | --help                       ${CYAN}Show this"
+  echo -e "${GREEN} -h  | --help                      ${CYAN}Show this"
   echo -e "${GREEN} -sc | --show-config               ${CYAN}Print the current configuration"
   echo -e "${GREEN} -cd | --create-dump               ${CYAN}Creates a dump, pass one argument for name prefix (f.e. -cd dump_for_demo), the current date will be added as well"
   echo -e "${GREEN} -ld | --list-dumps                ${CYAN}List the dumps from the dump directory, pass an argument to match */*argument*.sql"
   echo -e "${GREEN} -rd | --restore-dump              ${CYAN}Restores the dump specified in the argument, use the path displayed in -ld because we need the spaces (if present) escaped (f.e. -rs /Users/user/dumpFolder/dump.sql)"
   echo -e "${GREEN} -dd | --drop-db                   ${CYAN}Drop the current database (this includes emptying SESSION and GLOBAL sql modes)"
-  echo -e "${GREEN} --config                          ${CYAN}Opens the config file"
+  echo -e "${GREEN} -cc | --change-config             ${CYAN}Specify a new database config to use, must be present in config.yaml"
                                                       #${CYAN}Sets the config located in config.cfg. Example: jdump --config=database:qiagen
 }
 
@@ -50,14 +62,13 @@ function createDump {
 }
 
 function config {
-  #empty=""
-  #config="${1/--config=/$empty}"
-  #configKey="$(cut -d':' -f1 <<<"$config")"
-  #configValue="$(cut -d':' -f2 <<<"$config")"
-  #echo -e ${LIGHT_BLUE}Replacing $configKey with $configValue ${NC}
-  #sed -i '' "/\(^$configKey=\).*/ s//\1$configValue/" $configFile
-
-  open $configFile
+  varName="config_${1}_database"
+  if [ -z "${!varName}" ]
+  then
+    echo "No config found with key $1!" 1>&2
+    exit 64
+  fi
+  sed -i -e "s/configToUse: .*/configToUse: $1/g" $my_dir/config.yml
 }
 
 function showConfig {
@@ -84,7 +95,7 @@ while(($#)) ; do
         -sc | --show-config )   showConfig
                                 exit
                                 ;;
-        --config=* | --config ) config "$1"
+        -cc | --change-config ) config "$2"
                                 exit
                                 ;;
         -ld | --list-dumps )    listDumps "$2"
@@ -105,3 +116,19 @@ while(($#)) ; do
                                 ;;
     esac
 done
+
+parse_yaml() {
+   local prefix=$2
+   local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
+   sed -ne "s|^\($s\)\($w\)$s:$s\"\(.*\)\"$s\$|\1$fs\2$fs\3|p" \
+        -e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
+   awk -F$fs '{
+      indent = length($1)/2;
+      vname[indent] = $2;
+      for (i in vname) {if (i > indent) {delete vname[i]}}
+      if (length($3) > 0) {
+         vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+         printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, $2, $3);
+      }
+   }'
+}

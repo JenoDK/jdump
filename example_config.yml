@@ -1,0 +1,12 @@
+# Rename the file to config.yml and adjust to your needs
+configToUse: development_version_01
+development_version_01:
+  database: development_version_01
+  databaseUser: root
+  databasePassword: root
+  dumpFolder: /Users/user/Documents/dumps/version01/
+development_version_02:
+  database: development_version_02
+  databaseUser: root
+  databasePassword: root
+  dumpFolder: /Users/user/Documents/dumps/version02/
