@@ -22,9 +22,9 @@ python jdump.py
 #### First time
 You will be prompted to initialize the configuration.
 
-_Define configuration_
+_Define configuration_<br/>
 ![alt text](doc/init_1.png "Init 1")
-_Select which configuration to use, select the one you just created_
+_Select which configuration to use, select the one you just created_<br/>
 ![alt text](doc/init_2.png "Init 1")
 
 Your configuration will be stored in `<path_to_jdump>/config.yml`. You can see an example of what the config.yml should look like in `example_config.yml`
