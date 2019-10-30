@@ -163,6 +163,8 @@ def restoreDump(config):
         answers = prompt(questions, style=constants.style)
         # Keyboard interrupt -> answers is empty
         if bool(answers):
+            print('Cleaning the current database...')
+            cleanDatabase(config)
             dump_to_restore = os.path.join(config.dumpFolder, answers['dump'])
             print('This can take a while depending on the size of the dump...')
             os.system("mysql -u %s -p%s %s < %s" % (config.databaseUser, config.databasePassword, config.database, dump_to_restore))
