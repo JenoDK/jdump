@@ -14,7 +14,8 @@ from constants import BColors
 
 
 class Config:
-    def __init__(self, database, dumpFolder, databaseUser, databasePassword):
+    def __init__(self, config_id, database, dumpFolder, databaseUser, databasePassword):
+        self.config_id = config_id
         self.database = database
         self.dumpFolder = dumpFolder
         self.databaseUser = databaseUser
@@ -94,6 +95,7 @@ def extractConfigToUse(configToUse, configs):
         changeConfig()
         return loadConfig()
     return Config(
+        configToUse,
         configs[configToUse]['database'], 
         configs[configToUse]['dumpFolder'], 
         configs[configToUse]['databaseUser'], 
@@ -101,6 +103,7 @@ def extractConfigToUse(configToUse, configs):
     )
 
 def showMenu(config):
+    print('Current configuration: ' + BColors.RED + str(config.config_id) + BColors.NC)
     questions = {
         'type': 'list',
         'name': 'choice',
