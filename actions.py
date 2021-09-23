@@ -14,12 +14,15 @@ from constants import BColors
 
 
 class Config:
-    def __init__(self, config_id, database, dumpFolder, databaseUser, databasePassword):
+    def __init__(self, config_id, database, dumpFolder, databaseUser, databasePassword, isDocker=False, dockerContainerName=None, dockerPort=None):
         self.config_id = config_id
         self.database = database
         self.dumpFolder = dumpFolder
         self.databaseUser = databaseUser
         self.databasePassword = databasePassword
+        self.isDocker = isDocker
+        self.dockerContainerName = dockerContainerName
+        self.dockerPort = dockerPort
 
 class ChoiceGroups(Enum):
 
@@ -55,7 +58,8 @@ class Choices(Enum):
         grouped_choices = seq(Choices) \
             .group_by(lambda c: c.group)
         questions = []
-        for group in grouped_choices:
+        for choiceGroup in list(ChoiceGroups):
+            group = grouped_choices.find(lambda x: x[0] == choiceGroup)
             group_questions = seq(group[1]) \
                 .map(lambda c: {
                     'name': c.title(config),
@@ -99,7 +103,10 @@ def extractConfigToUse(configToUse, configs):
         configs[configToUse]['database'], 
         configs[configToUse]['dumpFolder'], 
         configs[configToUse]['databaseUser'], 
-        configs[configToUse]['databasePassword']
+        configs[configToUse]['databasePassword'],
+        configs[configToUse].get('isDocker', False),
+        configs[configToUse].get('dockerContainerName', None),
+        configs[configToUse].get('dockerPort', None)
     )
 
 def showMenu(config):
@@ -139,6 +146,10 @@ def showAllConfig():
             print(BColors.CYAN + 'dumpFolder:' + str(config.dumpFolder))
             print(BColors.CYAN + 'databaseUser:' + str(config.databaseUser))
             print(BColors.CYAN + 'databasePassword:' + str(config.databasePassword) + BColors.NC)
+            print(BColors.CYAN + 'isDocker:' + str(config.isDocker) + BColors.NC)
+            if config.isDocker:
+                print(BColors.CYAN + 'dockerPort:' + str(config.dockerPort) + BColors.NC)
+                print(BColors.CYAN + 'dockerContainerName:' + str(config.dockerContainerName) + BColors.NC)
             print()
 
 def showConfig(config):
@@ -148,6 +159,10 @@ def showConfig(config):
     print(BColors.CYAN + '- dumpFolder:' + str(config.dumpFolder))
     print(BColors.CYAN + '- databaseUser:' + str(config.databaseUser))
     print(BColors.CYAN + '- databasePassword:' + str(config.databasePassword) + BColors.NC)
+    print(BColors.CYAN + '- isDocker:' + str(config.isDocker) + BColors.NC)
+    if config.isDocker:
+        print(BColors.CYAN + '- dockerPort:' + str(config.dockerPort) + BColors.NC)
+        print(BColors.CYAN + '- dockerContainerName:' + str(config.dockerContainerName) + BColors.NC)
 
 def restoreDump(config):
     dumps_dict = getDumps(config)
@@ -170,7 +185,11 @@ def restoreDump(config):
             cleanDatabase(config)
             dump_to_restore = os.path.join(config.dumpFolder, answers['dump'])
             print('This can take a while depending on the size of the dump...')
-            os.system("mysql -u %s -p%s %s < %s" % (config.databaseUser, config.databasePassword, config.database, dump_to_restore))
+            # docker exec -i mysql_slims_66 sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" slimsdb66 ' < /Users/dekeyzer/Documents/DbDumps/SLIMS/6.6/slims65_start.sql
+            if config.isDocker:
+                os.system("docker exec -i %s sh -c 'exec mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" %s ' < %s" % (config.dockerContainerName, config.database, dump_to_restore))
+            else:
+                os.system("mysql -u %s -p%s %s < %s" % (config.databaseUser, config.databasePassword, config.database, dump_to_restore))
     else:
         logError("No dumps found in '%s'" % config.dumpFolder)
     
@@ -185,11 +204,27 @@ def createDump(config):
     answers = prompt(questions, style=constants.style)
     if bool(answers):
         dump_location = config.dumpFolder + '/' + answers['dump_name'] + '_' + now + '.sql'
-        os.system("mysqldump -u %s -p%s %s > %s" % (config.databaseUser, config.databasePassword, config.database, dump_location))
+        if config.isDocker:
+            os.system("docker exec %s sh -c 'exec mysqldump -uroot -p\"$MYSQL_ROOT_PASSWORD\" %s' > %s" % (config.dockerContainerName, config.database, dump_location))
+        else:
+            os.system("mysqldump -u %s -p%s %s > %s" % (config.databaseUser, config.databasePassword, config.database, dump_location))
 
 def cleanDatabase(config):
-    os.system("mysqladmin -u %s -p%s drop %s" % (config.databaseUser, config.databasePassword, config.database))
-    os.system("mysqladmin -u %s -p%s create %s" % (config.databaseUser, config.databasePassword, config.database))
+    if config.isDocker:
+        questions = {
+            'type': 'confirm',
+            'message': 'Are you sure you want to drop the ' + config.database,
+            'name': 'continue',
+        }
+        answers = prompt(questions, style=constants.style)
+        if not answers['continue']:
+            return
+        else:
+            os.system("docker exec %s sh -c 'exec mysqladmin -uroot -p\"$MYSQL_ROOT_PASSWORD\" -f drop %s'" % (config.dockerContainerName, config.database))
+            os.system("docker exec %s sh -c 'exec mysqladmin -uroot -p\"$MYSQL_ROOT_PASSWORD\" create %s'" % (config.dockerContainerName, config.database))
+    else:
+        os.system("mysqladmin -u %s -p%s drop %s" % (config.databaseUser, config.databasePassword, config.database))
+        os.system("mysqladmin -u %s -p%s create %s" % (config.databaseUser, config.databasePassword, config.database))
 
 def askWhichConfiguration(configs, question):
 
@@ -285,15 +320,38 @@ def editConfig():
                     'name': 'database_password',
                     'message': 'Database password:',
                     'default': config_object.databasePassword
+                },
+                {
+                    'type': 'confirm',
+                    'message': 'Is this a docker configuration',
+                    'name': 'isDocker',
+                    'default': config_object.isDocker,
+                },
+                {
+                    'type': 'input',
+                    'message': 'What is the docker container\'s name?',
+                    'name': 'dockerContainerName',
+                    'default': config_object.dockerContainerName,
+                    'when': lambda answers: answers['isDocker']
+                },
+                {
+                    'type': 'input',
+                    'message': 'On what port is the docker container running?',
+                    'name': 'dockerPort',
+                    'default': config_object.dockerPort,
+                    'when': lambda answers: answers['isDocker']
                 }
-            ]
+            ]   
             edited_config = prompt(questions, style=constants.style)
             if bool(edited_config):
                 new_config = {
                     'database': edited_config['database'],
                     'databasePassword': edited_config['database_password'],
                     'databaseUser': edited_config['database_user'],
-                    'dumpFolder': edited_config['dump_folder']
+                    'dumpFolder': edited_config['dump_folder'],
+                    'isDocker': edited_config['isDocker'],
+                    'dockerContainerName': edited_config['dockerContainerName'],
+                    'dockerPort': edited_config['dockerPort']
                 }
                 configs[chosen_config] = new_config
 
@@ -328,6 +386,24 @@ def addConfig():
             'type': 'input',
             'name': 'database_password',
             'message': 'Database password:'
+        },
+        {
+            'type': 'confirm',
+            'message': 'Is this a docker configuration',
+            'name': 'isDocker',
+            'default': False,
+        },
+        {
+            'type': 'input',
+            'message': 'What is the docker container\'s name?',
+            'name': 'dockerContainerName',
+            'when': lambda answers: answers['isDocker']
+        },
+        {
+            'type': 'input',
+            'message': 'On what port is the docker container running?',
+            'name': 'dockerPort',
+            'when': lambda answers: answers['isDocker']
         }
     ]
     answers = prompt(questions, style=constants.style)
@@ -338,7 +414,10 @@ def addConfig():
                 'database': answers['database'],
                 'databasePassword': answers['database_password'],
                 'databaseUser': answers['database_user'],
-                'dumpFolder': answers['dump_folder']
+                'dumpFolder': answers['dump_folder'],
+                'isDocker': answers['isDocker'],
+                'dockerContainerName': answers['dockerContainerName'],
+                'dockerPort': answers['dockerPort']
             }
             configs[answers['config_key']] = new_config
 
