@@ -6,7 +6,7 @@ lazy-object-proxy==1.4.3
 mccabe==0.6.1
 prompt-toolkit==1.0.14
 PyFunctional==1.3.0
-Pygments==2.7.4
+Pygments==2.15.0
 PyInquirer==1.0.3
 pylint==2.4.3
 PyYAML==5.4.1
