@@ -14,12 +14,13 @@ from constants import BColors
 
 
 class Config:
-    def __init__(self, config_id, database, dumpFolder, databaseUser, databasePassword, isDocker=False, dockerContainerName=None, dockerPort=None):
+    def __init__(self, config_id, database, dumpFolder, databaseUser, databasePassword, databaseType='mysql', isDocker=False, dockerContainerName=None, dockerPort=None):
         self.config_id = config_id
         self.database = database
         self.dumpFolder = dumpFolder
         self.databaseUser = databaseUser
         self.databasePassword = databasePassword
+        self.databaseType = databaseType
         self.isDocker = isDocker
         self.dockerContainerName = dockerContainerName
         self.dockerPort = dockerPort
@@ -104,6 +105,7 @@ def extractConfigToUse(configToUse, configs):
         configs[configToUse]['dumpFolder'], 
         configs[configToUse]['databaseUser'], 
         configs[configToUse]['databasePassword'],
+        configs[configToUse].get('databaseType', 'mysql'),
         configs[configToUse].get('isDocker', False),
         configs[configToUse].get('dockerContainerName', None),
         configs[configToUse].get('dockerPort', None)
@@ -146,6 +148,7 @@ def showAllConfig():
             print(BColors.CYAN + 'dumpFolder:' + str(config.dumpFolder))
             print(BColors.CYAN + 'databaseUser:' + str(config.databaseUser))
             print(BColors.CYAN + 'databasePassword:' + str(config.databasePassword) + BColors.NC)
+            print(BColors.CYAN + 'databaseType:' + str(config.databaseType) + BColors.NC)
             print(BColors.CYAN + 'isDocker:' + str(config.isDocker) + BColors.NC)
             if config.isDocker:
                 print(BColors.CYAN + 'dockerPort:' + str(config.dockerPort) + BColors.NC)
@@ -159,6 +162,7 @@ def showConfig(config):
     print(BColors.CYAN + '- dumpFolder:' + str(config.dumpFolder))
     print(BColors.CYAN + '- databaseUser:' + str(config.databaseUser))
     print(BColors.CYAN + '- databasePassword:' + str(config.databasePassword) + BColors.NC)
+    print(BColors.CYAN + '- databaseType:' + str(config.databaseType) + BColors.NC)
     print(BColors.CYAN + '- isDocker:' + str(config.isDocker) + BColors.NC)
     if config.isDocker:
         print(BColors.CYAN + '- dockerPort:' + str(config.dockerPort) + BColors.NC)
@@ -185,11 +189,19 @@ def restoreDump(config):
             cleanDatabase(config)
             dump_to_restore = os.path.join(config.dumpFolder, answers['dump'])
             print('This can take a while depending on the size of the dump...')
-            # docker exec -i mysql_slims_66 sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" slimsdb66 ' < /Users/dekeyzer/Documents/DbDumps/SLIMS/6.6/slims65_start.sql
-            if config.isDocker:
-                os.system("docker exec -i %s sh -c 'exec mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" %s ' < %s" % (config.dockerContainerName, config.database, dump_to_restore))
-            else:
-                os.system("mysql -u %s -p%s %s < %s" % (config.databaseUser, config.databasePassword, config.database, dump_to_restore))
+            # docker exec -i mysql_slims_66 sh -c 'exec mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" slimsdb66 ' < /Users/dekeyzer/Documents/DbDumps/SLIMS/6.6/slims65_start.sql
+            if config.databaseType == 'mysql':
+                if config.isDocker:
+                    os.system("docker exec -i %s sh -c 'exec mysql -uroot -p\\\"$MYSQL_ROOT_PASSWORD\\\" %s ' < %s" % (config.dockerContainerName, config.database, dump_to_restore))
+                else:
+                    os.system("mysql -u %s -p%s %s < %s" % (config.databaseUser, config.databasePassword, config.database, dump_to_restore))
+            elif config.databaseType == 'postgres':
+                if config.isDocker:
+                    os.system("docker exec -i %s sh -c 'export PGPASSWORD=\"$POSTGRES_PASSWORD\" && psql -U %s -d %s' < %s" % (config.dockerContainerName, config.databaseUser, config.database, dump_to_restore))
+                else:
+                    os.environ["PGPASSWORD"] = config.databasePassword
+                    os.system("psql -U %s -d %s < %s" % (config.databaseUser, config.database, dump_to_restore))
+                    os.environ.pop("PGPASSWORD", None)
     else:
         logError("No dumps found in '%s'" % config.dumpFolder)
     
@@ -204,27 +216,45 @@ def createDump(config):
     answers = prompt(questions, style=constants.style)
     if bool(answers):
         dump_location = config.dumpFolder + '/' + answers['dump_name'] + '_' + now + '.sql'
-        if config.isDocker:
-            os.system("docker exec %s sh -c 'exec mysqldump -uroot -p\"$MYSQL_ROOT_PASSWORD\" %s' > %s" % (config.dockerContainerName, config.database, dump_location))
-        else:
-            os.system("mysqldump -u %s -p%s %s > %s" % (config.databaseUser, config.databasePassword, config.database, dump_location))
+        if config.databaseType == 'mysql':
+            if config.isDocker:
+                os.system("docker exec %s sh -c 'exec mysqldump -uroot -p\\\"$MYSQL_ROOT_PASSWORD\\\" %s' > %s" % (config.dockerContainerName, config.database, dump_location))
+            else:
+                os.system("mysqldump -u %s -p%s %s > %s" % (config.databaseUser, config.databasePassword, config.database, dump_location))
+        elif config.databaseType == 'postgres':
+            if config.isDocker:
+                os.system("docker exec %s sh -c 'export PGPASSWORD=\"$POSTGRES_PASSWORD\" && pg_dump -U %s -d %s' > %s" % (config.dockerContainerName, config.databaseUser, config.database, dump_location))
+            else:
+                os.environ["PGPASSWORD"] = config.databasePassword
+                os.system("pg_dump -U %s -d %s > %s" % (config.databaseUser, config.database, dump_location))
+                os.environ.pop("PGPASSWORD", None)
 
 def cleanDatabase(config):
-    if config.isDocker:
-        questions = {
-            'type': 'confirm',
-            'message': 'Are you sure you want to drop the ' + config.database,
-            'name': 'continue',
-        }
-        answers = prompt(questions, style=constants.style)
-        if not answers['continue']:
-            return
+    questions = {
+        'type': 'confirm',
+        'message': 'Are you sure you want to drop the ' + config.database,
+        'name': 'continue',
+    }
+    answers = prompt(questions, style=constants.style)
+    if not answers['continue']:
+        return
+        
+    if config.databaseType == 'mysql':
+        if config.isDocker:
+            os.system("docker exec %s sh -c 'exec mysqladmin -uroot -p\\\"$MYSQL_ROOT_PASSWORD\\\" -f drop %s'" % (config.dockerContainerName, config.database))
+            os.system("docker exec %s sh -c 'exec mysqladmin -uroot -p\\\"$MYSQL_ROOT_PASSWORD\\\" create %s'" % (config.dockerContainerName, config.database))
         else:
-            os.system("docker exec %s sh -c 'exec mysqladmin -uroot -p\"$MYSQL_ROOT_PASSWORD\" -f drop %s'" % (config.dockerContainerName, config.database))
-            os.system("docker exec %s sh -c 'exec mysqladmin -uroot -p\"$MYSQL_ROOT_PASSWORD\" create %s'" % (config.dockerContainerName, config.database))
-    else:
-        os.system("mysqladmin -u %s -p%s drop %s" % (config.databaseUser, config.databasePassword, config.database))
-        os.system("mysqladmin -u %s -p%s create %s" % (config.databaseUser, config.databasePassword, config.database))
+            os.system("mysqladmin -u %s -p%s drop %s" % (config.databaseUser, config.databasePassword, config.database))
+            os.system("mysqladmin -u %s -p%s create %s" % (config.databaseUser, config.databasePassword, config.database))
+    elif config.databaseType == 'postgres':
+        if config.isDocker:
+            os.system("docker exec %s sh -c 'export PGPASSWORD=\"$POSTGRES_PASSWORD\" && dropdb -U %s --if-exists %s && createdb -U %s %s'" % 
+                    (config.dockerContainerName, config.databaseUser, config.database, config.databaseUser, config.database))
+        else:
+            os.environ["PGPASSWORD"] = config.databasePassword
+            os.system("dropdb -U %s --if-exists %s" % (config.databaseUser, config.database))
+            os.system("createdb -U %s %s" % (config.databaseUser, config.database))
+            os.environ.pop("PGPASSWORD", None)
 
 def askWhichConfiguration(configs, question):
 
@@ -303,6 +333,13 @@ def editConfig():
                     'default': config_object.database
                 },
                 {
+                    'type': 'list',
+                    'name': 'database_type',
+                    'message': 'Database type:',
+                    'choices': ['mysql', 'postgres'],
+                    'default': config_object.databaseType
+                },
+                {
                     'type': 'input',
                     'name': 'dump_folder',
                     'message': 'Dump folder:',
@@ -349,6 +386,7 @@ def editConfig():
                     'databasePassword': edited_config['database_password'],
                     'databaseUser': edited_config['database_user'],
                     'dumpFolder': edited_config['dump_folder'],
+                    'databaseType': edited_config['database_type'],
                     'isDocker': edited_config['isDocker'],
                     'dockerContainerName': edited_config['dockerContainerName'],
                     'dockerPort': edited_config['dockerPort']
@@ -370,6 +408,12 @@ def addConfig():
             'type': 'input',
             'name': 'database',
             'message': 'Database:',
+        },
+        {
+            'type': 'list',
+            'name': 'database_type',
+            'message': 'Database type:',
+            'choices': ['mysql', 'postgres']
         },
         {
             'type': 'input',
@@ -415,9 +459,10 @@ def addConfig():
                 'databasePassword': answers['database_password'],
                 'databaseUser': answers['database_user'],
                 'dumpFolder': answers['dump_folder'],
+                'databaseType': answers['database_type'],
                 'isDocker': answers['isDocker'],
-                'dockerContainerName': answers['dockerContainerName'],
-                'dockerPort': answers['dockerPort']
+                'dockerContainerName': answers.get('dockerContainerName'),
+                'dockerPort': answers.get('dockerPort')
             }
             configs[answers['config_key']] = new_config
 

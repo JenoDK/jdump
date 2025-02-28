@@ -1,10 +1,11 @@
 # JDUMP
 
-A CLI written in python to manage mysql dumps.
+A CLI written in python to manage MySQL and PostgreSQL database dumps.
 
 ## Requirements
 * Python3
-* mysql (with mysqladmin and mysqldump support)
+* MySQL (with mysqladmin and mysqldump support) for MySQL databases
+* PostgreSQL (with pg_dump and psql support) for PostgreSQL databases
 
 ## Setup
 ```
@@ -26,6 +27,8 @@ _Define configuration_<br/>
 ![alt text](doc/init_1.png "Init 1")<br/>
 _Select which configuration to use, select the one you just created_<br/>
 ![alt text](doc/init_2.png "Init 1")<br/>
+
+When creating or editing a configuration, you can now select the database type ('mysql' or 'postgres').
 
 Your configuration will be stored in `<path_to_jdump>/config.yml`. You can see an example of what the config.yml should look like in `example_config.yml`
 
